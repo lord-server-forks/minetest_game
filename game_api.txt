@@ -6,12 +6,12 @@ GitHub Repo: https://github.com/minetest/minetest_game
 Introduction
 ------------
 
-The Minetest Game game offers multiple new possibilities in addition to the Minetest engine's built-in API,
+The Minetest Game game offers multiple new possibilities in addition to the Luanti engine's built-in API,
 allowing you to add new plants to farming mod, buckets for new liquids, new stairs and custom panes.
-For information on the Minetest API, visit https://github.com/minetest/minetest/blob/master/doc/lua_api.txt
+For information on the Luanti API, visit https://github.com/minetest/minetest/blob/master/doc/lua_api.txt
 Please note:
 
- * [XYZ] refers to a section the Minetest API
+ * [XYZ] refers to a section the Luanti API
  * [#ABC] refers to a section in this document
  * [pos] refers to a position table `{x = -5, y = 0, z = 200}`
 
@@ -35,6 +35,7 @@ The bucket API allows registering new types of buckets for non-default liquids.
 
 The filled bucket item is returned to the player that uses an empty bucket pointing to the given liquid source.
 When punching with an empty bucket pointing to an entity or a non-liquid node, the on_punch of the entity or node will be triggered.
+The bucket API also allows registering buckets in other namespace using colon-prefixed itemname (i.e. ":cows:bucket_milk").
 
 
 Beds API
@@ -324,7 +325,7 @@ Allows creation of new fences with "fencelike" drawtype.
 	name = "default:fence_wood",
 	description = "Wooden Fence",
 	texture = "default_wood.png",
-	material = "default:wood",
+	material = "default:wood", -- `nil` if you don't want the recipe
 	groups = {choppy = 2, oddly_breakable_by_hand = 2, flammable = 2},
 	sounds = default.node_sound_wood_defaults(),
 
@@ -340,6 +341,12 @@ walls.register(name, desc, texture, mat, sounds)
 ^ texture = "default_stone.png"
 ^ mat = "default:stone". Used to auto-generate crafting recipe.
 ^ sounds = sounds: see [#Default sounds]
+
+All walls will be connected to any nodes with one of the following groups:
+ * `wall`
+ * `stone`
+ * `fence`
+ * `wall_connected`
 
 
 Farming API
@@ -382,6 +389,8 @@ The farming API allows you to easily register plants and hoes.
 		-- ^ Always provide a plant texture for each step, format: modname_plantname_i.png (i = stepnumber)
 		minlight = 13,                         -- Minimum light to grow
 		maxlight = default.LIGHT_MAX           -- Maximum light to grow
+		can_grow = function(pos)               -- Сalled every growth tick to check if the plant can grow, returns bool
+		                                       -- (optional, checks for wet soil by default)
 	}
 
 
@@ -591,6 +600,18 @@ Both nodedefs and entitydefs can provide an `on_blast()` callback
 * `drops` - a list of drops, e.g. {"wool:red"}
 
 
+Node drops:
+
+When a node is detonated it is removed according to the following rules.
+1. If `on_blast` is defined, that is called.
+2. Else if the node has group `flammable` it is replaced with a fire node.
+3. Else the dropped items are retrieved and it is replaced with air.
+
+The parameter `_tnt_loss` in any item definition can be set to a number to
+effect that "one in X" of these drops will be lost during an explosion.
+For example `_tnt_loss = 2` would cause 50% of items to disappear.
+The default is to not lose any items, which is equivalent to `_tnt_loss = 0`.
+
 Screwdriver API
 ---------------
 
@@ -631,6 +652,34 @@ set a players home position and teleport a player to home position.
 
  * `name` Player you wish to teleport to their home position
  * return value: false if player cannot be sent home, otherwise true
+
+Spawn API
+---------
+
+The spawn mod takes care of deciding the position of new and respawning players
+in the world and has an API to modify its behavior.
+
+`spawn.get_default_pos()`
+* Gets the default spawn position as decided by a biome-dependent algorithm.
+* This is not influenced by settings like "static_spawnpoint" or "engine_spawn".
+* return value: a vector or `nil` on failure
+
+`spawn.add_suitable_biome(biome)`:
+* Adds a biome to the list of allowed biomes for the above algorithm.
+* `biome`: Name of a registered biome
+
+`spawn.register_on_spawn(func)`:
+* Registers a callback to be called when a player (re-)spawns. This can be used
+  to intercept the normal logic to e.g. respawn a player at his bed.
+* `func`: `function(player, is_new)` with arguments
+  - `player`: ObjectRef
+  - `is_new`: true if the player is joining the server for the first time
+  - return value: true to skip all other spawn logic, false or nil otherwise
+
+When a player (re-)spawns the following order is executed:
+1. All spawn callbacks in order of registration.
+2. If no result, teleport player to `spawn.get_default_pos()`.
+3. If that fails, spawning is left up to engine.
 
 
 Sfinv API
@@ -1169,3 +1218,29 @@ the log.
  * after logging the action, the original callback (if any) is called
  * `def`     See [Node definition]
  * `name`    Description of the node in the log message
+
+
+Weather API
+-----------
+
+The weather mod will constantly adjust weather effects seen by the player
+(that is: cloud parameters, shadow intensity, bloom and volumetric lighting).
+These can be influenced using this API.
+
+#### `weather.get = function(player)`
+
+* Returns the current weather effects seen by the player.
+  It returns a table with two keys:
+  * `clouds`:   A table (or `nil`) with cloud data following the same format as used for `player:set_clouds()`.
+  * `lighting`: A table (or `nil`) with lighting data following the same format as used for `player:set_lighting()`.
+* `player`: ObjectRef of the relevant player
+* You can override this function to change the weather effects by simply returning different values.
+  Setting `clouds` or `lighting` in the result table to `nil` will *prevent* those from changing.
+
+Utilities
+---------
+
+`default.dig_up(pos, node, digger, max_height)`
+
+ * Find all nodes above `pos` that is the same, then dig them all
+ * `max_height`	Maximum number of nodes to iterate. Default: 100
