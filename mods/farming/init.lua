@@ -71,6 +71,9 @@ farming.register_plant("farming:cotton", {
 	groups = {flammable = 4},
 })
 
+-- декорация отключена: биома "savanna" у нас нет (генерация у нас своя),
+-- из-за чего падал в лог warning "get_biome_list: failed to get biome 'savanna'"
+--[[
 minetest.register_decoration({
 	name = "farming:cotton_wild",
 	deco_type = "simple",
@@ -89,6 +92,7 @@ minetest.register_decoration({
 	y_min = 1,
 	decoration = "farming:cotton_wild",
 })
+]]
 
 minetest.register_craftitem("farming:string", {
 	description = S("String"),
